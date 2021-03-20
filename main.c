@@ -16,6 +16,7 @@
 
 #include "lvgl/lvgl.h"
 #include "lv_examples/lv_examples.h"
+#include "my_apps/my_apps.h"
 
 /* 
 	Linux frame buffer like /dev/fb0 
@@ -50,6 +51,7 @@ struct input_event my_event;
 #define DISP_BUF_SIZE LV_HOR_RES_MAX * LV_VER_RES_MAX /10
 /* default to 5 milliseconds to keep the system responsive */
 #define SYSTEM_RESPONSE_TIME 5
+#define INPUT_SAMEPLING_TIME 1
 
 void my_fb_init(void);
 void my_touchpad_init(void);
@@ -127,7 +129,7 @@ void my_touchpad_thread(lv_task_t *task)
 
 	int len;
 	
-	len = poll(mpollfd, nfds, SYSTEM_RESPONSE_TIME);
+	len = poll(mpollfd, nfds, INPUT_SAMEPLING_TIME);
 	
 		if(len > 0){		/* There is data to read */
 			
@@ -268,6 +270,7 @@ int main(void)
 	//lv_demo_widgets();
 	lv_demo_printer();
 	//lv_demo_music();
+	//first_app_examples();
 	
 	while(1) {
 		lv_task_handler();		
