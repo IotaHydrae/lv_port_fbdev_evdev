@@ -39,9 +39,9 @@
 #define INPUT_READ_MODE 1
 
 #if (INPUT_READ_MODE == 1)
-    #include <poll.h>
+#include <poll.h>
 #elif (INPUT_READ_MODE == 2)
-    #include <signal.h>
+#include <signal.h>
 #endif
 
 #define DISP_BUF_SIZE LV_HOR_RES_MAX * LV_VER_RES_MAX /10
@@ -54,7 +54,9 @@
 /* Framebuffer info */
 struct fbdev_struct {
     int fd_fb;
-    unsigned int *fb_base;
+    unsigned char *fb_base;
+
+    struct fb_var_screeninfo fb_var;
 };
 
 /* Lcd info */
@@ -72,56 +74,37 @@ struct indev_struct   {
     /*  */
     int tp_fd;
 
-    #ifndef DEFAULT_LINUX_TOUCHPAD_PATH
+#ifndef DEFAULT_LINUX_TOUCHPAD_PATH
     char *event;
-    #endif
+#endif
 
-    /*  */
+    /* Data of touch panel */
     bool touchdown;
-    unsigned short last_x;
-    unsigned short last_y;
+    unsigned short last_x;  /* Abs_mt_x */
+    unsigned short last_y;  /* Abs_mt_y */
 
-    #if (INPUT_READ_MODE == 0)
+#if (INPUT_READ_MODE == 0)
     /* query mode */
 
-    #elif (INPUT_READ_MODE == 1)
+#elif (INPUT_READ_MODE == 1)
 #define DEVICE_NUM 1
     /* poll mode */
     nfds_t nfds;
     struct pollfd mpollfd[DEVICE_NUM];
 
 
-    #elif (INPUT_READ_MODE == 2)
+#elif (INPUT_READ_MODE == 2)
     /* signal mode */
 
-    #endif
+#endif
 
     struct input_event indev_event;
 };
 
 
-/* old  */
-static int fd_fb;
-static struct fb_var_screeninfo var;
-static int screen_size;
-static unsigned char *fb_base;
-static unsigned int line_width, pixel_width;
-
-/* touchpad data */
-static bool my_touchpad_touchdown = false;
-static int16_t last_x = 0;
-static int16_t last_y = 0;
-
-/* poll event of input device touchpad*/
-static int tp_fd;
-nfds_t nfds = 1;
-struct pollfd mpollfd[1];
-struct input_event my_event;
-
-
-static struct fbdev_struct fbdev_info;
-static struct screen_struct screen_info;
-
+static struct fbdev_struct fbdev_info;  /* framebuffer */
+static struct screen_struct screen_info;    /* scree */
+static struct indev_struct indev_info;  /* touchpad data */
 
 
 void my_fb_init(void);
@@ -146,21 +129,18 @@ void my_fb_init(void)
         handle_error("can not open /dev/fb0");
     }
     /* already get fd_fb */
-    if(ioctl(fbdev_info.fd_fb, FBIOGET_VSCREENINFO, &var) < 0) {
+    if(ioctl(fbdev_info.fd_fb, FBIOGET_VSCREENINFO, &fbdev_info.fb_var) < 0) {
         handle_error("can not ioctl");
     }
     /* already get the var screen info */
-    line_width = var.xres * var.bits_per_pixel / 8;
-    pixel_width = var.bits_per_pixel / 8;
-    screen_size = var.xres * var.yres * var.bits_per_pixel / 8;
-    screen_info.width = var.xres;
-    screen_info.height = var.yres;
-    screen_info.line_width = var.xres * var.bits_per_pixel / 8;
-    screen_info.pixel_width = var.bits_per_pixel / 8;
-    screen_info.screen_size = var.xres * var.yres * var.bits_per_pixel / 8;
+    screen_info.width = fbdev_info.fb_var.xres;
+    screen_info.height = fbdev_info.fb_var.yres;
+    screen_info.line_width = fbdev_info.fb_var.xres * fbdev_info.fb_var.bits_per_pixel / 8;
+    screen_info.pixel_width = fbdev_info.fb_var.bits_per_pixel / 8;
+    screen_info.screen_size = fbdev_info.fb_var.xres * fbdev_info.fb_var.yres * fbdev_info.fb_var.bits_per_pixel / 8;
     /* mmap the fb_base */
-    fbdev_info.fb_base = (unsigned int *)mmap(NULL, screen_info.screen_size, PROT_READ | PROT_WRITE, MAP_SHARED, fbdev_info.fd_fb, 0);
-    if(fbdev_info.fb_base == (unsigned int *) -1) {
+    fbdev_info.fb_base = (unsigned char *)mmap(NULL, screen_info.screen_size, PROT_READ | PROT_WRITE, MAP_SHARED, fbdev_info.fd_fb, 0);
+    if(fbdev_info.fb_base == (unsigned char *) -1) {
         handle_error("can not mmap frame buffer");
     }
     /* alreay get the start addr of framebuffer */
@@ -174,13 +154,14 @@ void my_fb_init(void)
  */
 void my_touchpad_init(void)
 {
-    tp_fd = open(DEFAULT_LINUX_TOUCHPAD_PATH, O_RDWR);
-    if(tp_fd < 0) {
+    indev_info.tp_fd = open(DEFAULT_LINUX_TOUCHPAD_PATH, O_RDWR);
+    if(indev_info.tp_fd < 0) {
         handle_error("can not open /dev/input/event1");
     }
-    mpollfd[0].fd = tp_fd;
-    mpollfd[0].events = POLLIN;
-    mpollfd[0].revents = 0;
+    indev_info.nfds = 1;
+    indev_info.mpollfd[0].fd = indev_info.tp_fd;
+    indev_info.mpollfd[0].events = POLLIN;
+    indev_info.mpollfd[0].revents = 0;
 }
 
 
@@ -193,30 +174,32 @@ void my_touchpad_thread(lv_task_t *task)
 {
     (void)task;
     int len;
-    len = poll(mpollfd, nfds, INPUT_SAMEPLING_TIME);
+    len = poll(indev_info.mpollfd, indev_info.nfds, INPUT_SAMEPLING_TIME);
     if(len > 0) {       /* There is data to read */
-        len = read(tp_fd, &my_event, sizeof(my_event));
-        if(len == sizeof(my_event)) {   /* On success */
-            //printf("get event: type = 0x%x,code = 0x%x,value = 0x%x\n",my_event.type,my_event.code,my_event.value);
-            switch(my_event.type) {
+        len = read(indev_info.tp_fd, &indev_info.indev_event,
+                   sizeof(indev_info.indev_event));
+        if(len == sizeof(indev_info.indev_event)) {   /* On success */
+            switch(indev_info.indev_event.type) {
                 case EV_SYN:    /* Sync event. Do nonthing */
                     break;
                 case EV_KEY:    /* Key event. Provide the pressure data of touchscreen*/
-                    if(my_event.code == BTN_TOUCH) {        /* Screen touch event */
-                        if(1 == my_event.value) {       /* Touch down */
-                            my_touchpad_touchdown = true;
-                        } else
-                            if(0 == my_event.value) {  /* Touch up */
-                                my_touchpad_touchdown = false;
-                            } else                          /* Unexcepted data */
-                            { goto touchdown_err; }
+                    if(indev_info.indev_event.code == BTN_TOUCH) {        /* Screen touch event */
+                        if(1 == indev_info.indev_event.value) {       /* Touch down */
+                            indev_info.touchdown = true;
+                        } else if(0 == indev_info.indev_event.value) { /* Touch up */
+                            indev_info.touchdown = false;
+                        } else {                        /* Unexcepted data */
+                            goto touchdown_err;
+                        }
                     }
                     break;
                 case EV_ABS:    /* Abs event. Provide the position data of touchscreen*/
-                    if(my_event.code == ABS_MT_POSITION_X)
-                    { last_x = my_event.value; }
-                    if(my_event.code == ABS_MT_POSITION_Y)
-                    { last_y = my_event.value; }
+                    if(indev_info.indev_event.code == ABS_MT_POSITION_X) {
+                        indev_info.last_x = indev_info.indev_event.value;
+                    }
+                    if(indev_info.indev_event.code == ABS_MT_POSITION_Y) {
+                        indev_info.last_y = indev_info.indev_event.value;
+                    }
                     break;
                 default:
                     break;
@@ -224,12 +207,11 @@ void my_touchpad_thread(lv_task_t *task)
         } else {          /* On error */
             handle_error("read error\n");
         }
-    } else
-        if(len == 0) { /* Time out */
-            /* Do nothing */
-        } else { /* Error */
-            handle_error("poll error!");
-        }
+    } else if(len == 0) { /* Time out */
+        /* Do nothing */
+    } else { /* Error */
+        handle_error("poll error!");
+    }
 touchdown_err:      /* Do nothing. Just return and ready for next event come. */
     return;
 }
@@ -264,10 +246,10 @@ void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color
 bool my_touchpad_read(lv_indev_drv_t *indev, lv_indev_data_t *data)
 {
     /* store the collected data */
-    data->state = my_touchpad_touchdown ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
+    data->state = indev_info.touchdown ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
     if(data->state == LV_INDEV_STATE_PR) {
-        data->point.x = last_x;
-        data->point.y = last_y;
+        data->point.x = indev_info.last_x;
+        data->point.y = indev_info.last_y;
     }
     return false;
 }
@@ -278,32 +260,25 @@ int main(void)
     lv_init();
     my_fb_init();
     my_touchpad_init();
-    
-    static lv_disp_buf_t disp_buf;	/* lvgl display buffer */
-    
-    static lv_color_t buf[DISP_BUF_SIZE];	/* Declare a buffer for 1/10 screen size */
-    
-    lv_disp_buf_init(&disp_buf, buf, NULL, DISP_BUF_SIZE);	/* Initialize the display buffer */
-    
+    static lv_disp_buf_t disp_buf;  /* lvgl display buffer */
+    static lv_color_t buf[DISP_BUF_SIZE];   /* Declare a buffer for 1/10 screen size */
+    lv_disp_buf_init(&disp_buf, buf, NULL, DISP_BUF_SIZE);  /* Initialize the display buffer */
     lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
     disp_drv.flush_cb = my_disp_flush;
     disp_drv.buffer = &disp_buf;
-    lv_disp_drv_register(&disp_drv);	/* register display driver */
-    
+    lv_disp_drv_register(&disp_drv);    /* register display driver */
     lv_indev_drv_t indev_drv;
     lv_indev_drv_init(&indev_drv);
     indev_drv.type = LV_INDEV_TYPE_POINTER;
     indev_drv.read_cb = my_touchpad_read;
-    lv_indev_drv_register(&indev_drv);	/* register input device driver */
-    
-    lv_task_create(my_touchpad_thread, SYSTEM_RESPONSE_TIME, 
-					LV_TASK_PRIO_MID, NULL);	/* create a thread to collect screen input data */
-	
+    lv_indev_drv_register(&indev_drv);  /* register input device driver */
+    lv_task_create(my_touchpad_thread, SYSTEM_RESPONSE_TIME,
+                   LV_TASK_PRIO_MID, NULL);    /* create a thread to collect screen input data */
     /* App here */
-    lv_demo_benchmark();
+    //lv_demo_benchmark();
     //lv_demo_widgets();
-    //lv_demo_printer();
+    lv_demo_printer();
     //lv_demo_music();
     //first_app_examples();
     while(1) {
