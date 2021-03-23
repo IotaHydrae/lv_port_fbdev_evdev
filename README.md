@@ -1,7 +1,12 @@
 # lvgl_framebuffer
 
-#### 介绍
-将LVGL移植到Linux framebuffer
+#### 介绍 
+
+#### 自己动手将LVGL移植到Linux framebuffer
+
+**重要！**：**lvgl官方**提供了framebuffer和输入设备的驱动程序，实际项目中应当**优先采用官方库函数**，本项目仅用于学习交流，实际运行效果与官方库函数相差无异！
+
+
 
 我提供了4种读取输入事件的方式，需要在`main.c`中设置设置宏`INPUT_READ_MODE`来进行事件读取方式的切换
 
