@@ -60,7 +60,8 @@
 #endif
 
 
-#define DISP_BUF_SIZE LV_HOR_RES_MAX * LV_VER_RES_MAX /10   /* LVGL DISP_BUF_SIZE */
+#define DISP_BUF_SIZE LV_HOR_RES_MAX * LV_VER_RES_MAX/10   /* LVGL DISP_BUF_SIZE */
+//#define DISP_BUF_SIZE LV_HOR_RES_MAX * LV_VER_RES_MAX   /* LVGL DISP_BUF_SIZE */
 
 #ifndef SYSTEM_RESPONSE_TIME
 #define SYSTEM_RESPONSE_TIME 5  /* Default to 5 milliseconds to keep the system responsive */
@@ -130,6 +131,8 @@ typedef struct
 *       GLOBAL
 ********************/
 static fbdev_struct fbdev_info;  /* framebuffer */
+struct fb_fix_screeninfo finfo;
+
 static screen_struct screen_info;    /* scree */
 static indev_struct indev_info;  /* touchpad data */
 #if (INPUT_READ_MODE==3)
@@ -180,6 +183,10 @@ void my_fb_init(void)
     {
         handle_error("can not ioctl");
     }
+	if (ioctl(fbdev_info.fd_fb,FBIOGET_FSCREENINFO, &finfo))
+	 {
+		  handle_error("Error reading fixed information/n");
+	 }
     /* already get the var screen info */
     screen_info.width = fbdev_info.fb_var.xres;
     screen_info.height = fbdev_info.fb_var.yres;
@@ -190,7 +197,8 @@ void my_fb_init(void)
 
     printf("screen info:\n Resolution:\t%dx%d\n Bits per pixel:\t%d\n",
            screen_info.width,screen_info.height,screen_info.bpp);
-
+	printf("frame buffer size:%d\n", finfo.smem_len);
+	
     /* mmap the fb_base */
     fbdev_info.fb_base = (unsigned char *)mmap(NULL, screen_info.screen_size, PROT_READ | PROT_WRITE, MAP_SHARED, fbdev_info.fd_fb, 0);
     if(fbdev_info.fb_base == (unsigned char *) -1)
@@ -369,6 +377,10 @@ void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color
             color_p++;
         }
     }
+	
+	/*if (ioctl(fbdev_info.fd_fb, FBIOPAN_DISPLAY, &fbdev_info.fb_var) < 0) {
+		fprintf(stderr, "active fb swap failed\n");
+	}*/
     lv_disp_flush_ready(disp);
 }
 
@@ -398,7 +410,8 @@ int main(void)
     my_touchpad_init();
     static lv_disp_buf_t disp_buf;  /* lvgl display buffer */
     static lv_color_t buf[DISP_BUF_SIZE];   /* Declare a buffer for 1/10 screen size */
-    lv_disp_buf_init(&disp_buf, buf, NULL, DISP_BUF_SIZE);  /* Initialize the display buffer */
+	static lv_color_t buf2[DISP_BUF_SIZE];
+    lv_disp_buf_init(&disp_buf, buf, buf2, DISP_BUF_SIZE);  /* Initialize the display buffer */
     lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
     disp_drv.flush_cb = my_disp_flush;
