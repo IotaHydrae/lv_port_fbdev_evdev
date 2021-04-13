@@ -60,8 +60,8 @@
 #endif
 
 
-#define DISP_BUF_SIZE LV_HOR_RES_MAX * LV_VER_RES_MAX/10   /* LVGL DISP_BUF_SIZE */
-//#define DISP_BUF_SIZE LV_HOR_RES_MAX * LV_VER_RES_MAX   /* LVGL DISP_BUF_SIZE */
+//#define DISP_BUF_SIZE LV_HOR_RES_MAX * LV_VER_RES_MAX/10   /* LVGL DISP_BUF_SIZE */
+#define DISP_BUF_SIZE LV_HOR_RES_MAX * LV_VER_RES_MAX   /* LVGL DISP_BUF_SIZE */
 
 #ifndef SYSTEM_RESPONSE_TIME
 #define SYSTEM_RESPONSE_TIME 5  /* Default to 5 milliseconds to keep the system responsive */
@@ -378,9 +378,9 @@ void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color
         }
     }
 	
-	/*if (ioctl(fbdev_info.fd_fb, FBIOPAN_DISPLAY, &fbdev_info.fb_var) < 0) {
+	if (ioctl(fbdev_info.fd_fb, FBIOPAN_DISPLAY, &fbdev_info.fb_var) < 0) {
 		fprintf(stderr, "active fb swap failed\n");
-	}*/
+	}
     lv_disp_flush_ready(disp);
 }
 
