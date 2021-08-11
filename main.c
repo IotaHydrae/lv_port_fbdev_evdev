@@ -209,6 +209,12 @@ void my_fb_init(void)
     printf("Successfully get the start address of framebuffer.\n");
     memset(fbdev_info.fb_base, 0xff, screen_info.screen_size); /* clear the screen */
     printf("Successfully clear the screen.\n");
+
+    	
+	if (ioctl(fbdev_info.fd_fb, FBIOPAN_DISPLAY, &fbdev_info.fb_var) < 0) {
+		fprintf(stderr, "active fb swap failed\n");
+	}
+	
 }
 
 /**
@@ -377,10 +383,7 @@ void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color
             color_p++;
         }
     }
-	
-	if (ioctl(fbdev_info.fd_fb, FBIOPAN_DISPLAY, &fbdev_info.fb_var) < 0) {
-		fprintf(stderr, "active fb swap failed\n");
-	}
+
     lv_disp_flush_ready(disp);
 }
 
